@@ -1,5 +1,5 @@
-# Tarea1_Sist.Operativos
-Tarea 1 de Sistemas Operativos, la creación de una "shell" propia en ambiente de ubuntu. 
+# Proyecto1_Sist.Operativos
+La creación de una "shell" propia en ambiente de ubuntu. 
 
 Estudiantes: 
 Nicolás Pino Leal
