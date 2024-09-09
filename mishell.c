@@ -40,22 +40,22 @@ int main() {
     signal(SIGALRM, reminder_handler);
 
     while (1) {
-        // Mostrar el prompt
+        
         printf("mishell:$ ");
         fflush(stdout);
 
-        // Leer la entrada
+        
         if (!fgets(input, MAX_INPUT_SIZE, stdin)) {
             perror("Error leyendo la entrada");
             exit(EXIT_FAILURE);
         }
 
-        // Si el usuario solo presiona "Enter"
+       
         if (strcmp(input, "\n") == 0) {
             continue;
         }
 
-        // Verificar si es el comando "exit"
+      
         if (strncmp(input, "exit", 4) == 0) {
             
             if (favs_file == NULL) {
@@ -77,7 +77,7 @@ int main() {
             parse_input(input, args);
         }
 
-        // Verificar si es el comando "favs" o "set recordatorio"
+        
         if (strcmp(args[0], "favs") == 0) {
             handle_favs(args);
         } else if (strcmp(args[0], "set") == 0 && strcmp(args[1], "recordatorio") == 0) {
@@ -89,7 +89,7 @@ int main() {
                 execute_pipe(args, args_pipe);
             } else {
                 execute_command(args);
-                add_favorite(input);  // Agregar a favoritos automáticamente
+                add_favorite(input); 
             }
         }
     }
@@ -120,47 +120,57 @@ void execute_command(char **args) {
             exit(EXIT_FAILURE);
         }
     } else {
-        // Proceso padre
-        wait(&status);  // Esperar a que cualquier hijo termine
+       
+        wait(&status);  
     }
 }
 
 void execute_pipe(char **args1, char **args2) {
-    int p[2];  // Array para los descriptores de la tubería
-    pid_t pid;
+   int pipefd[2];
+    pid_t pid1, pid2;
+    int status;
 
-    // Crear la tubería
-    if (pipe(p) == -1) {
-        perror("Error creando pipe");
+    if (pipe(pipefd) == -1) {
+        perror("Error en pipe");
         exit(EXIT_FAILURE);
     }
 
-    pid = fork();
-    if (pid == -1) {
+    pid1 = fork();
+    if (pid1 < 0) {
         perror("Error en fork");
         exit(EXIT_FAILURE);
     }
 
-    if (pid == 0) {
-        
-        close(0);            
-        close(p[1]);         
-        dup(p[0]);           
-        close(p[0]);         
-        execvp(args2[0], args2);  
-        perror("Error ejecutando el comando 2");
-        exit(EXIT_FAILURE);
+    if (pid1 == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        if (execvp(args1[0], args1) < 0) {
+            perror("Comando no encontrado");
+            exit(EXIT_FAILURE);
+        }
     } else {
-       
-        close(1);            
-        close(p[0]);         
-        dup(p[1]);           
-        close(p[1]);         
-        execvp(args1[0], args1);  
-        perror("Error ejecutando el comando 1");
-        exit(EXIT_FAILURE);
+        pid2 = fork();
+        if (pid2 < 0) {
+            perror("Error en fork");
+            exit(EXIT_FAILURE);
+        }
+
+        if (pid2 == 0) {
+            close(pipefd[1]);
+            dup2(pipefd[0], STDIN_FILENO);
+            close(pipefd[0]);
+            if (execvp(args2[0], args2) < 0) {
+                perror("Comando no encontrado");
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            close(pipefd[0]);
+            close(pipefd[1]);
+            waitpid(pid1, &status, 0);
+            waitpid(pid2, &status, 0);
+        }
     }
-    
 }
 
 void handle_favs(char **args) {
@@ -245,13 +255,13 @@ void save_favorites() {
         printf("Error: No se ha especificado un archivo para guardar los favoritos\n");
         return;
     }
-    FILE *file = fopen(favs_file, "w");  // Abrir el archivo en modo de escritura ("w")
+    FILE *file = fopen(favs_file, "w");  
     if (file == NULL) {
         perror("Error abriendo el archivo de favoritos");
         return;
     }
     for (int i = 0; i < fav_count; i++) {
-        fprintf(file, "%s \n", favorites[i].command);  // Asegurarse de que cada comando esté en una nueva línea
+        fprintf(file, "%s \n", favorites[i].command);  
     }
     fclose(file);
 }
