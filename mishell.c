@@ -57,7 +57,11 @@ int main() {
 
         // Verificar si es el comando "exit"
         if (strncmp(input, "exit", 4) == 0) {
-            save_favorites();
+            
+            if (favs_file == NULL) {
+                save_favorites();
+            }
+            
             break;
         }
 
@@ -110,61 +114,53 @@ void execute_command(char **args) {
         perror("Error en fork");
         exit(EXIT_FAILURE);
     } else if (pid == 0) {
+        // Proceso hijo
         if (execvp(args[0], args) < 0) {
             perror("Comando no encontrado");
             exit(EXIT_FAILURE);
         }
     } else {
-        waitpid(pid, &status, 0);
+        // Proceso padre
+        wait(&status);  // Esperar a que cualquier hijo termine
     }
 }
 
 void execute_pipe(char **args1, char **args2) {
-    int pipefd[2];
-    pid_t pid1, pid2;
-    int status;
+    int p[2];  // Array para los descriptores de la tubería
+    pid_t pid;
 
-    if (pipe(pipefd) == -1) {
-        perror("Error en pipe");
+    // Crear la tubería
+    if (pipe(p) == -1) {
+        perror("Error creando pipe");
         exit(EXIT_FAILURE);
     }
 
-    pid1 = fork();
-    if (pid1 < 0) {
+    pid = fork();
+    if (pid == -1) {
         perror("Error en fork");
         exit(EXIT_FAILURE);
     }
 
-    if (pid1 == 0) {
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[1]);
-        if (execvp(args1[0], args1) < 0) {
-            perror("Comando no encontrado");
-            exit(EXIT_FAILURE);
-        }
+    if (pid == 0) {
+        
+        close(0);            
+        close(p[1]);         
+        dup(p[0]);           
+        close(p[0]);         
+        execvp(args2[0], args2);  
+        perror("Error ejecutando el comando 2");
+        exit(EXIT_FAILURE);
     } else {
-        pid2 = fork();
-        if (pid2 < 0) {
-            perror("Error en fork");
-            exit(EXIT_FAILURE);
-        }
-
-        if (pid2 == 0) {
-            close(pipefd[1]);
-            dup2(pipefd[0], STDIN_FILENO);
-            close(pipefd[0]);
-            if (execvp(args2[0], args2) < 0) {
-                perror("Comando no encontrado");
-                exit(EXIT_FAILURE);
-            }
-        } else {
-            close(pipefd[0]);
-            close(pipefd[1]);
-            waitpid(pid1, &status, 0);
-            waitpid(pid2, &status, 0);
-        }
+       
+        close(1);            
+        close(p[0]);         
+        dup(p[1]);           
+        close(p[1]);         
+        execvp(args1[0], args1);  
+        perror("Error ejecutando el comando 1");
+        exit(EXIT_FAILURE);
     }
+    
 }
 
 void handle_favs(char **args) {
@@ -221,8 +217,10 @@ void handle_favs(char **args) {
             }
         }
     } else if (strcmp(args[1], "cargar") == 0) {
+        strcpy(favs_file, args[2]);
         load_favorites();
     } else if (strcmp(args[1], "guardar") == 0) {
+        
         save_favorites();
     }
 }
@@ -268,12 +266,26 @@ void load_favorites() {
         perror("Error abriendo el archivo de favoritos");
         return;
     }
+    
     fav_count = 0;
-    while (fgets(favorites[fav_count].command, MAX_INPUT_SIZE, file) != NULL) {
-        favorites[fav_count].id = fav_count + 1;
-        fav_count++;
+    char line[MAX_INPUT_SIZE];
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        
+        line[strcspn(line, "\n")] = '\0';
+
+        
+        if (strlen(line) > 0) {
+            strcpy(favorites[fav_count].command, line);
+            favorites[fav_count].id = fav_count +1;
+            fav_count++;
+        }
     }
+        
     fclose(file);
+    for (int i = 0; i < fav_count; i++) {
+            printf("%d: %s \n", favorites[i].id, favorites[i].command);  
+        }
 }
 
 void set_reminder(int seconds, const char *message) {
