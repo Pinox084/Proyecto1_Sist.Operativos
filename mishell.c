@@ -11,6 +11,7 @@
 #define MAX_ARGS 64
 #define SEPARATORS " \t\n"
 #define MAX_FAVS 100
+#define MAX_CMDS 10
 
 typedef struct {
     char command[MAX_INPUT_SIZE];
@@ -23,7 +24,7 @@ char favs_file[MAX_INPUT_SIZE] = "";
 
 void parse_input(char *input, char **args);
 void execute_command(char **args);
-void execute_pipe(char **args1, char **args2);
+void execute_pipe(char *input);
 void handle_favs(char **args);
 void add_favorite(const char *command);
 void save_favorites();
@@ -69,11 +70,9 @@ int main() {
         has_pipe = 0;
         char *pipe_pos = strchr(input, '|');
         if (pipe_pos != NULL) {
-            *pipe_pos = '\0';
-            parse_input(input, args);
-            parse_input(pipe_pos + 1, args_pipe);
             has_pipe = 1;
-        } else {
+            } 
+        else {
             parse_input(input, args);
         }
 
@@ -86,7 +85,7 @@ int main() {
         } else {
             // Ejecutar el comando
             if (has_pipe) {
-                execute_pipe(args, args_pipe);
+                execute_pipe(input);
             } else {
                 execute_command(args);
                 add_favorite(input); 
@@ -125,54 +124,78 @@ void execute_command(char **args) {
     }
 }
 
-void execute_pipe(char **args1, char **args2) {
-   int pipefd[2];
-    pid_t pid1, pid2;
-    int status;
 
-    if (pipe(pipefd) == -1) {
-        perror("Error en pipe");
-        exit(EXIT_FAILURE);
+void execute_pipe(char *input) {
+    char *commands[MAX_CMDS];
+    int num_cmds = 0;
+    char *token = strtok(input, "|");
+
+    // Split the input into commands based on pipes
+    while (token != NULL && num_cmds < MAX_CMDS) {
+        commands[num_cmds++] = token;
+        token = strtok(NULL, "|");
     }
+    commands[num_cmds] = NULL;
 
-    pid1 = fork();
-    if (pid1 < 0) {
-        perror("Error en fork");
-        exit(EXIT_FAILURE);
-    }
-
-    if (pid1 == 0) {
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[1]);
-        if (execvp(args1[0], args1) < 0) {
-            perror("Comando no encontrado");
+    int pipefds[2 * (num_cmds - 1)];
+    
+    // Create pipes
+    for (int i = 0; i < num_cmds - 1; i++) {
+        if (pipe(pipefds + 2 * i) == -1) {
+            perror("Error en pipe");
             exit(EXIT_FAILURE);
         }
-    } else {
-        pid2 = fork();
-        if (pid2 < 0) {
+    }
+
+    for (int i = 0; i < num_cmds; i++) {
+        pid_t pid = fork();
+        if (pid < 0) {
             perror("Error en fork");
             exit(EXIT_FAILURE);
         }
 
-        if (pid2 == 0) {
-            close(pipefd[1]);
-            dup2(pipefd[0], STDIN_FILENO);
-            close(pipefd[0]);
-            if (execvp(args2[0], args2) < 0) {
-                perror("Comando no encontrado");
-                exit(EXIT_FAILURE);
+        if (pid == 0) { // Child process
+            // Input redirection
+            if (i > 0) {
+                if (dup2(pipefds[2 * (i - 1)], STDIN_FILENO) == -1) {
+                    perror("Error en dup2 (input)");
+                    exit(EXIT_FAILURE);
+                }
             }
-        } else {
-            close(pipefd[0]);
-            close(pipefd[1]);
-            waitpid(pid1, &status, 0);
-            waitpid(pid2, &status, 0);
+            // Output redirection
+            if (i < num_cmds - 1) {
+                if (dup2(pipefds[2 * i + 1], STDOUT_FILENO) == -1) {
+                    perror("Error en dup2 (output)");
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            // Close all pipe file descriptors
+            for (int j = 0; j < 2 * (num_cmds - 1); j++) {
+                close(pipefds[j]);
+            }
+
+            // Parse the command
+            char *args[MAX_ARGS];
+            parse_input(commands[i], args);
+
+            // Execute the command
+            execvp(args[0], args);
+            perror("Error en execvp");
+            exit(EXIT_FAILURE);
         }
     }
-}
 
+    // Close all pipe file descriptors in the parent
+    for (int i = 0; i < 2 * (num_cmds - 1); i++) {
+        close(pipefds[i]);
+    }
+
+    // Wait for all child processes to finish
+    for (int i = 0; i < num_cmds; i++) {
+        wait(NULL);
+    }
+}
 void handle_favs(char **args) {
     if (strcmp(args[1], "crear") == 0) {
         strcpy(favs_file, args[2]);
