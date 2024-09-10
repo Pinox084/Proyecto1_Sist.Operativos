@@ -130,7 +130,7 @@ void execute_pipe(char *input) {
     int num_cmds = 0;
     char *token = strtok(input, "|");
 
-    // Split the input into commands based on pipes
+    
     while (token != NULL && num_cmds < MAX_CMDS) {
         commands[num_cmds++] = token;
         token = strtok(NULL, "|");
@@ -139,7 +139,7 @@ void execute_pipe(char *input) {
 
     int pipefds[2 * (num_cmds - 1)];
     
-    // Create pipes
+    
     for (int i = 0; i < num_cmds - 1; i++) {
         if (pipe(pipefds + 2 * i) == -1) {
             perror("Error en pipe");
@@ -154,15 +154,15 @@ void execute_pipe(char *input) {
             exit(EXIT_FAILURE);
         }
 
-        if (pid == 0) { // Child process
-            // Input redirection
+        if (pid == 0) { 
+            
             if (i > 0) {
                 if (dup2(pipefds[2 * (i - 1)], STDIN_FILENO) == -1) {
                     perror("Error en dup2 (input)");
                     exit(EXIT_FAILURE);
                 }
             }
-            // Output redirection
+            
             if (i < num_cmds - 1) {
                 if (dup2(pipefds[2 * i + 1], STDOUT_FILENO) == -1) {
                     perror("Error en dup2 (output)");
@@ -170,12 +170,12 @@ void execute_pipe(char *input) {
                 }
             }
 
-            // Close all pipe file descriptors
+            
             for (int j = 0; j < 2 * (num_cmds - 1); j++) {
                 close(pipefds[j]);
             }
 
-            // Parse the command
+            
             char *args[MAX_ARGS];
             parse_input(commands[i], args);
 
@@ -186,12 +186,12 @@ void execute_pipe(char *input) {
         }
     }
 
-    // Close all pipe file descriptors in the parent
+    
     for (int i = 0; i < 2 * (num_cmds - 1); i++) {
         close(pipefds[i]);
     }
 
-    // Wait for all child processes to finish
+    
     for (int i = 0; i < num_cmds; i++) {
         wait(NULL);
     }
